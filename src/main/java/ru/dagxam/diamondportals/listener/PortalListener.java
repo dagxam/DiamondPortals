@@ -3,6 +3,7 @@ package ru.dagxam.diamondportals.listener;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -28,6 +29,7 @@ public final class PortalListener implements Listener {
     private final DimensionManager dimensionManager;
     private final Set<UUID> teleporting = new HashSet<>();
     private final Map<UUID, ReturnPoint> returnPoints = new HashMap<>();
+    private final Set<String> createdReturnPortals = new HashSet<>();
 
     public PortalListener(JavaPlugin plugin, DimensionManager dimensionManager) {
         this.plugin = plugin;
@@ -49,7 +51,8 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        PortalShape shape = PortalShape.find(event.getBlock(), frame, plugin.getConfig().getInt("portal.max-size", 23));
+        PortalShape shape = PortalShape.find(event.getBlock(), frame,
+                plugin.getConfig().getInt("portal.max-size", 23));
         if (shape == null) {
             return;
         }
@@ -96,7 +99,6 @@ public final class PortalListener implements Listener {
         Material frame = configuredFrame();
         PortalShape shape = PortalShape.find(location.getBlock(), frame,
                 plugin.getConfig().getInt("portal.max-size", 23));
-
         if (shape == null) {
             return;
         }
@@ -128,16 +130,52 @@ public final class PortalListener implements Listener {
                         return;
                     }
 
-                    Location targetLocation = target.getSpawnLocation().clone().add(0.5, 0, 0.5);
+                    Location returnPortal = createReturnPortal(target, shape.frame());
+                    Location targetLocation = returnPortal.clone().add(0.5, 1.0, 2.5);
                     targetLocation.setYaw(player.getLocation().getYaw());
                     targetLocation.setPitch(player.getLocation().getPitch());
+
                     player.teleport(targetLocation);
                     player.sendMessage("§bDiamondPortals: §fВы прибыли в измерение §e" + target.getName());
+                    player.sendMessage("§7Обратный портал находится рядом. Он вернёт вас точно туда, откуда вы вошли.");
                 } finally {
                     releaseTeleportLockLater(uuid);
                 }
             }
         }.runTaskLater(plugin, delayTicks);
+    }
+
+    private Location createReturnPortal(World world, Material frameMaterial) {
+        String key = world.getUID().toString();
+        int x = 4;
+        int z = 0;
+        int groundY = world.getHighestBlockYAt(x, z);
+        int baseY = Math.max(world.getMinHeight() + 1, groundY + 1);
+        Location base = new Location(world, x, baseY, z);
+
+        // Портал строится один раз в каждом измерении рядом с точкой появления.
+        // Рамка 4x5, как минимальный стандартный портал в Ад.
+        if (!createdReturnPortals.contains(key) || !hasReturnPortalAt(base, frameMaterial)) {
+            for (int dx = -1; dx <= 2; dx++) {
+                for (int dy = 0; dy <= 4; dy++) {
+                    Block block = world.getBlockAt(x + dx, baseY + dy, z);
+                    boolean border = dx == -1 || dx == 2 || dy == 0 || dy == 4;
+                    block.setType(border ? frameMaterial : Material.NETHER_PORTAL);
+                }
+            }
+            createdReturnPortals.add(key);
+        }
+
+        return base;
+    }
+
+    private boolean hasReturnPortalAt(Location base, Material frameMaterial) {
+        World world = base.getWorld();
+        if (world == null) {
+            return false;
+        }
+        return world.getBlockAt(base.getBlockX() - 1, base.getBlockY(), base.getBlockZ()).getType() == frameMaterial
+                && world.getBlockAt(base.getBlockX(), base.getBlockY() + 1, base.getBlockZ()).getType() == Material.NETHER_PORTAL;
     }
 
     private void teleportToReturnPoint(Player player, ReturnPoint returnPoint) {
@@ -147,17 +185,23 @@ public final class PortalListener implements Listener {
         }
 
         try {
-            if (!returnPoint.location().getWorld().isChunkLoaded(returnPoint.location().getBlockX() >> 4,
-                    returnPoint.location().getBlockZ() >> 4)) {
-                returnPoint.location().getWorld().loadChunk(returnPoint.location().getBlockX() >> 4,
-                        returnPoint.location().getBlockZ() >> 4);
+            World returnWorld = returnPoint.location().getWorld();
+            if (returnWorld == null) {
+                player.sendMessage("§cDiamondPortals: §fМир, из которого вы вошли, больше недоступен.");
+                return;
+            }
+
+            int chunkX = returnPoint.location().getBlockX() >> 4;
+            int chunkZ = returnPoint.location().getBlockZ() >> 4;
+            if (!returnWorld.isChunkLoaded(chunkX, chunkZ)) {
+                returnWorld.loadChunk(chunkX, chunkZ);
             }
 
             Location destination = returnPoint.location().clone();
             destination.setYaw(player.getLocation().getYaw());
             destination.setPitch(player.getLocation().getPitch());
             player.teleport(destination);
-            player.sendMessage("§bDiamondPortals: §fВы вернулись в то же место, откуда вошли в измерение.");
+            player.sendMessage("§bDiamondPortals: §fВы вернулись точно в то место, откуда вошли в измерение.");
         } finally {
             returnPoints.remove(uuid);
             releaseTeleportLockLater(uuid);
@@ -194,6 +238,8 @@ public final class PortalListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent event) {
+        // Полностью отключаем стандартную маршрутизацию Minecraft в Нижний мир.
+        // Все переходы обрабатывает этот плагин через PlayerMoveEvent.
         event.setCancelled(true);
     }
 
