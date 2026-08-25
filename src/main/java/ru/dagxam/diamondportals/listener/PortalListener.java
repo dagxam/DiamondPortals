@@ -19,6 +19,7 @@ import ru.dagxam.diamondportals.world.DimensionManager;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -41,13 +42,15 @@ public final class PortalListener implements Listener {
         if (!(event.getIgniter() instanceof Player player)) {
             return;
         }
-        if (event.getCause() != BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL
-                && event.getCause() != BlockIgniteEvent.IgniteCause.FIREBALL) {
+        if (!plugin.getConfig().getBoolean("portal.enabled", true)) {
+            return;
+        }
+        if (event.getCause() != BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL) {
             return;
         }
 
-        Material frame = configuredFrame();
-        if (!frame.isBlock()) {
+        Material frame = findFrameMaterial(event.getBlock());
+        if (frame == null) {
             return;
         }
 
@@ -59,7 +62,23 @@ public final class PortalListener implements Listener {
 
         event.setCancelled(true);
         activate(shape);
-        player.sendMessage("§bDiamondPortals: §fПортал успешно активирован.");
+        player.sendMessage("§bDiamondPortals: §fПортал из блока §e" + russianName(frame) + " §fуспешно активирован.");
+    }
+
+    private Material findFrameMaterial(Block ignitionBlock) {
+        for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
+            Material material = Material.matchMaterial(value);
+            if (material == null || !material.isBlock()) {
+                plugin.getLogger().warning("Неизвестный материал в настройках порталов: " + value);
+                continue;
+            }
+            PortalShape shape = PortalShape.find(ignitionBlock, material,
+                    plugin.getConfig().getInt("portal.max-size", 23));
+            if (shape != null) {
+                return material;
+            }
+        }
+        return null;
     }
 
     private void activate(PortalShape shape) {
@@ -76,38 +95,57 @@ public final class PortalListener implements Listener {
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (teleporting.contains(uuid)) {
+        if (teleporting.contains(uuid) || !isInsideCustomPortal(event.getTo())) {
             return;
         }
 
-        Location location = event.getTo();
-        if (!isInsideCustomPortal(location)) {
-            return;
-        }
-
-        if (isCustomDimension(location.getWorld())) {
+        if (isCustomDimension(event.getTo().getWorld())) {
             ReturnPoint returnPoint = returnPoints.get(uuid);
             if (returnPoint == null) {
                 player.sendMessage("§cDiamondPortals: §fНе удалось определить место, откуда вы вошли в портал.");
                 return;
             }
-
             teleportToReturnPoint(player, returnPoint);
             return;
         }
 
-        Material frame = configuredFrame();
-        PortalShape shape = PortalShape.find(location.getBlock(), frame,
-                plugin.getConfig().getInt("portal.max-size", 23));
-        if (shape == null) {
+        Material frame = findFrameMaterialNear(event.getTo());
+        if (frame == null) {
             return;
         }
 
         returnPoints.put(uuid, new ReturnPoint(player.getLocation().clone()));
-        teleportToDimension(player, shape);
+        teleportToDimension(player, frame);
     }
 
-    private void teleportToDimension(Player player, PortalShape shape) {
+    private Material findFrameMaterialNear(Location location) {
+        Block center = location.getBlock();
+        for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
+            Material material = Material.matchMaterial(value);
+            if (material == null) {
+                continue;
+            }
+            if (hasFrameNearby(center, material)) {
+                return material;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasFrameNearby(Block center, Material material) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (center.getRelative(dx, dy, dz).getType() == material) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void teleportToDimension(Player player, Material frameMaterial) {
         UUID uuid = player.getUniqueId();
         if (!teleporting.add(uuid)) {
             return;
@@ -124,20 +162,20 @@ public final class PortalListener implements Listener {
                         return;
                     }
 
-                    World target = dimensionManager.getOrCreate(shape.frame());
+                    World target = dimensionManager.getOrCreate(frameMaterial);
                     if (target == null) {
                         player.sendMessage("§cDiamondPortals: §fНе удалось создать или загрузить измерение.");
                         return;
                     }
 
-                    Location returnPortal = createReturnPortal(target, shape.frame());
+                    Location returnPortal = createReturnPortal(target, frameMaterial);
                     Location targetLocation = returnPortal.clone().add(0.5, 1.0, 2.5);
                     targetLocation.setYaw(player.getLocation().getYaw());
                     targetLocation.setPitch(player.getLocation().getPitch());
 
                     player.teleport(targetLocation);
-                    player.sendMessage("§bDiamondPortals: §fВы прибыли в измерение §e" + target.getName());
-                    player.sendMessage("§7Обратный портал находится рядом. Он вернёт вас точно туда, откуда вы вошли.");
+                    player.sendMessage("§bDiamondPortals: §fВы прибыли в измерение §e" + russianName(frameMaterial));
+                    player.sendMessage("§7Обратный портал находится рядом и вернёт вас точно туда, откуда вы вошли.");
                 } finally {
                     releaseTeleportLockLater(uuid);
                 }
@@ -146,15 +184,13 @@ public final class PortalListener implements Listener {
     }
 
     private Location createReturnPortal(World world, Material frameMaterial) {
-        String key = world.getUID().toString();
+        String key = world.getUID() + ":" + frameMaterial.name();
         int x = 4;
         int z = 0;
         int groundY = world.getHighestBlockYAt(x, z);
         int baseY = Math.max(world.getMinHeight() + 1, groundY + 1);
         Location base = new Location(world, x, baseY, z);
 
-        // Портал строится один раз в каждом измерении рядом с точкой появления.
-        // Рамка 4x5, как минимальный стандартный портал в Ад.
         if (!createdReturnPortals.contains(key) || !hasReturnPortalAt(base, frameMaterial)) {
             for (int dx = -1; dx <= 2; dx++) {
                 for (int dy = 0; dy <= 4; dy++) {
@@ -165,16 +201,13 @@ public final class PortalListener implements Listener {
             }
             createdReturnPortals.add(key);
         }
-
         return base;
     }
 
     private boolean hasReturnPortalAt(Location base, Material frameMaterial) {
         World world = base.getWorld();
-        if (world == null) {
-            return false;
-        }
-        return world.getBlockAt(base.getBlockX() - 1, base.getBlockY(), base.getBlockZ()).getType() == frameMaterial
+        return world != null
+                && world.getBlockAt(base.getBlockX() - 1, base.getBlockY(), base.getBlockZ()).getType() == frameMaterial
                 && world.getBlockAt(base.getBlockX(), base.getBlockY() + 1, base.getBlockZ()).getType() == Material.NETHER_PORTAL;
     }
 
@@ -183,23 +216,14 @@ public final class PortalListener implements Listener {
         if (!teleporting.add(uuid)) {
             return;
         }
-
         try {
-            World returnWorld = returnPoint.location().getWorld();
-            if (returnWorld == null) {
+            Location destination = returnPoint.location().clone();
+            World world = destination.getWorld();
+            if (world == null) {
                 player.sendMessage("§cDiamondPortals: §fМир, из которого вы вошли, больше недоступен.");
                 return;
             }
-
-            int chunkX = returnPoint.location().getBlockX() >> 4;
-            int chunkZ = returnPoint.location().getBlockZ() >> 4;
-            if (!returnWorld.isChunkLoaded(chunkX, chunkZ)) {
-                returnWorld.loadChunk(chunkX, chunkZ);
-            }
-
-            Location destination = returnPoint.location().clone();
-            destination.setYaw(player.getLocation().getYaw());
-            destination.setPitch(player.getLocation().getPitch());
+            world.loadChunk(destination.getBlockX() >> 4, destination.getBlockZ() >> 4);
             player.teleport(destination);
             player.sendMessage("§bDiamondPortals: §fВы вернулись точно в то место, откуда вошли в измерение.");
         } finally {
@@ -238,8 +262,6 @@ public final class PortalListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent event) {
-        // Полностью отключаем стандартную маршрутизацию Minecraft в Нижний мир.
-        // Все переходы обрабатывает этот плагин через PlayerMoveEvent.
         event.setCancelled(true);
     }
 
@@ -250,10 +272,21 @@ public final class PortalListener implements Listener {
         returnPoints.remove(uuid);
     }
 
-    private Material configuredFrame() {
-        String value = plugin.getConfig().getString("portal.frame-material", "DIAMOND_BLOCK");
-        Material material = Material.matchMaterial(value == null ? "DIAMOND_BLOCK" : value);
-        return material == null ? Material.DIAMOND_BLOCK : material;
+    private String russianName(Material material) {
+        return switch (material) {
+            case DIAMOND_BLOCK -> "алмаза";
+            case GOLD_BLOCK -> "золота";
+            case IRON_BLOCK -> "железа";
+            case EMERALD_BLOCK -> "изумруда";
+            case COPPER_BLOCK -> "меди";
+            case LAPIS_BLOCK -> "лазурита";
+            case REDSTONE_BLOCK -> "редстоуна";
+            case AMETHYST_BLOCK -> "аметиста";
+            case COAL_BLOCK -> "угля";
+            case NETHERITE_BLOCK -> "незерита";
+            case QUARTZ_BLOCK -> "кварца";
+            default -> material.name().toLowerCase(Locale.ROOT);
+        };
     }
 
     private record ReturnPoint(Location location) {
