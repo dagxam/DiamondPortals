@@ -1,6 +1,5 @@
 package ru.dagxam.diamondportals;
 
-import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -23,13 +22,13 @@ public final class DiamondPortalsPlugin extends JavaPlugin {
                 new PortalListener(this, dimensionManager), this
         );
 
-        getLogger().info("DiamondPortals enabled.");
-        getLogger().info("Diamond portals use DIAMOND_BLOCK frames and flint & steel activation.");
+        getLogger().info("DiamondPortals включён.");
+        getLogger().info("Алмазные порталы используют рамку из DIAMOND_BLOCK и активируются обычным огнивом.");
     }
 
     @Override
     public void onDisable() {
-        getLogger().info("DiamondPortals disabled.");
+        getLogger().info("DiamondPortals выключен.");
     }
 
     public DimensionManager getDimensionManager() {
@@ -43,17 +42,17 @@ public final class DiamondPortalsPlugin extends JavaPlugin {
         }
 
         if (!sender.hasPermission("diamondportals.admin")) {
-            sender.sendMessage("§cNo permission.");
+            sender.sendMessage("§cУ вас нет прав для использования этой команды.");
             return true;
         }
 
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
             reloadConfig();
-            sender.sendMessage("§aDiamondPortals config reloaded.");
+            sender.sendMessage("§aНастройки DiamondPortals успешно перезагружены.");
             return true;
         }
 
-        sender.sendMessage("§e/diamondportals reload");
+        sender.sendMessage("§eИспользование: §f/diamondportals reload");
         return true;
     }
 }
