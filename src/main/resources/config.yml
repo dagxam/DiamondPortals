@@ -1,0 +1,17 @@
+# DiamondPortals configuration
+portal:
+  # First implementation: diamond block portals.
+  enabled: true
+  frame-material: DIAMOND_BLOCK
+  world-prefix: diamondportal_
+  max-size: 23
+  teleport-delay-seconds: 0
+
+  # The standard Nether-style ignition item.
+  ignition-item: FLINT_AND_STEEL
+
+world:
+  min-height: 0
+  max-height: 128
+  surface-height: 64
+  seed-mode: RANDOM
