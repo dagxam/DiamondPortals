@@ -1,6 +1,5 @@
 package ru.dagxam.diamondportals.portal;
 
-import org.bukkit.BlockChangeDelegate;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -8,7 +7,7 @@ import org.bukkit.block.Block;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Проверенная прямоугольная рамка портала, полностью повторяющая форму стандартного портала в Ад. */
+/** Проверенная прямоугольная рамка портала по правилам стандартного портала в Ад. */
 public record PortalShape(Material frame, Location origin, PortalAxis axis, int width, int height,
                           List<Location> inside) {
 
@@ -25,8 +24,6 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
         Location base = ignitedBlock.getLocation();
         int maximum = Math.max(4, maxSize);
 
-        // У стандартного портала минимальная внешняя рамка 4x5,
-        // а внутреннее пространство — минимум 2x3.
         for (PortalAxis axis : PortalAxis.values()) {
             for (int width = 4; width <= maximum; width++) {
                 for (int height = 5; height <= maximum; height++) {
@@ -42,7 +39,6 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
 
     private static PortalShape tryExact(Location base, Material frame, PortalAxis axis,
                                         int width, int height) {
-        // Ищем нижний левый угол вокруг поджигаемого блока.
         for (int offset = -(width - 1); offset <= 0; offset++) {
             for (int oy = -(height - 1); oy <= 0; oy++) {
                 Location origin = base.clone();
@@ -76,7 +72,6 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
 
     private static boolean matches(Location origin, Material frame, PortalAxis axis,
                                    int width, int height) {
-        // Нижняя и верхняя перекладины.
         for (int w = 0; w < width; w++) {
             if (!isFrame(origin, frame, axis, w, 0)
                     || !isFrame(origin, frame, axis, w, height - 1)) {
@@ -84,7 +79,6 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
             }
         }
 
-        // Левая и правая стойки.
         for (int h = 0; h < height; h++) {
             if (!isFrame(origin, frame, axis, 0, h)
                     || !isFrame(origin, frame, axis, width - 1, h)) {
@@ -95,7 +89,7 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
     }
 
     private static boolean isFrame(Location origin, Material frame, PortalAxis axis,
-                                    int w, int h) {
+                                   int w, int h) {
         Location location = origin.clone().add(
                 axis == PortalAxis.Z ? w : 0,
                 h,
