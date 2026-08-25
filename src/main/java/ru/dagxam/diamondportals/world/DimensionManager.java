@@ -11,11 +11,9 @@ import java.util.Locale;
 public final class DimensionManager {
 
     private final JavaPlugin plugin;
-    private final BlockWorldGenerator generator;
 
-    public DimensionManager(JavaPlugin plugin, BlockWorldGenerator generator) {
+    public DimensionManager(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.generator = generator;
     }
 
     public World getOrCreate(Material material) {
@@ -29,14 +27,17 @@ public final class DimensionManager {
         int surfaceY = plugin.getConfig().getInt("world.surface-height", 64);
         int maxY = plugin.getConfig().getInt("world.max-height", 128);
 
+        // Каждый мир получает свой экземпляр генератора.
+        // Один общий генератор нельзя переиспользовать: после создания второго мира
+        // его материал менялся бы и новые чанки первого мира генерировались неверно.
+        BlockWorldGenerator generator = new BlockWorldGenerator();
         generator.configure(material, minY, surfaceY, maxY);
 
         WorldCreator creator = new WorldCreator(name);
         creator.generator(generator);
         creator.generateStructures(false);
-        creator.createWorld();
+        World world = creator.createWorld();
 
-        World world = Bukkit.getWorld(name);
         if (world != null) {
             world.setAutoSave(true);
         }
@@ -45,6 +46,9 @@ public final class DimensionManager {
 
     public String worldName(Material material) {
         String prefix = plugin.getConfig().getString("portal.world-prefix", "diamondportal_");
+        if (prefix == null || prefix.isBlank()) {
+            prefix = "diamondportal_";
+        }
         return prefix + material.name().toLowerCase(Locale.ROOT);
     }
 }
