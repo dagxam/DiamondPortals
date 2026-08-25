@@ -6,20 +6,30 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.EnumMap;
 import java.util.Locale;
+import java.util.Map;
 
+/** Управляет мирами измерений и кэширует уже найденные миры. */
 public final class DimensionManager {
 
     private final JavaPlugin plugin;
+    private final Map<Material, World> worldCache = new EnumMap<>(Material.class);
 
     public DimensionManager(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
     public World getOrCreate(Material material) {
+        World cached = worldCache.get(material);
+        if (cached != null) {
+            return cached;
+        }
+
         String name = worldName(material);
         World existing = Bukkit.getWorld(name);
         if (existing != null) {
+            worldCache.put(material, existing);
             return existing;
         }
 
@@ -27,9 +37,6 @@ public final class DimensionManager {
         int surfaceY = plugin.getConfig().getInt("world.surface-height", 64);
         int maxY = plugin.getConfig().getInt("world.max-height", 128);
 
-        // Каждый мир получает свой экземпляр генератора.
-        // Один общий генератор нельзя переиспользовать: после создания второго мира
-        // его материал менялся бы и новые чанки первого мира генерировались неверно.
         BlockWorldGenerator generator = new BlockWorldGenerator();
         generator.configure(material, minY, surfaceY, maxY);
 
@@ -40,8 +47,14 @@ public final class DimensionManager {
 
         if (world != null) {
             world.setAutoSave(true);
+            worldCache.put(material, world);
         }
         return world;
+    }
+
+    /** Вызывать после перезагрузки конфигурации, если изменён префикс миров. */
+    public void reloadSettings() {
+        worldCache.clear();
     }
 
     public String worldName(Material material) {
