@@ -7,27 +7,41 @@ import org.bukkit.block.Block;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Проверенная прямоугольная рамка по логике обычного портала Minecraft. */
-public record PortalShape(Material frame, Location origin, PortalAxis axis, int width, int height,
-                          List<Location> inside) {
+/**
+ * Форма кастомного портала фиксирована и повторяет минимальный ванильный портал:
+ * внешняя рамка 4 блока в ширину и 5 блоков в высоту,
+ * внутренняя область 2 x 3 блока.
+ */
+public record PortalShape(Material frame, Location origin, PortalAxis axis, List<Location> inside) {
+
+    public static final int OUTER_WIDTH = 4;
+    public static final int OUTER_HEIGHT = 5;
+    public static final int INNER_WIDTH = 2;
+    public static final int INNER_HEIGHT = 3;
 
     public enum PortalAxis {
         X,
         Z
     }
 
-    public static PortalShape find(Block ignitionBlock, Material frame, int maxSize) {
-        if (ignitionBlock == null || frame == null) {
+    public static PortalShape find(Block ignitionBlock, Material frame) {
+        if (ignitionBlock == null || frame == null || ignitionBlock.getWorld() == null) {
             return null;
         }
 
-        int maximum = Math.max(5, maxSize);
-        Location base = ignitionBlock.getLocation();
-
+        Location ignition = ignitionBlock.getLocation();
         for (PortalAxis axis : PortalAxis.values()) {
-            for (int width = 4; width <= maximum; width++) {
-                for (int height = 5; height <= maximum; height++) {
-                    PortalShape shape = findAround(base, frame, axis, width, height);
+            // Блок огня/портала должен находиться в одной из 6 внутренних ячеек.
+            for (int horizontal = 1; horizontal <= INNER_WIDTH; horizontal++) {
+                for (int vertical = 1; vertical <= INNER_HEIGHT; vertical++) {
+                    Location origin = ignition.clone();
+                    if (axis == PortalAxis.X) {
+                        origin.add(-horizontal, -vertical, 0);
+                    } else {
+                        origin.add(0, -vertical, -horizontal);
+                    }
+
+                    PortalShape shape = createIfMatches(origin, ignition, frame, axis);
                     if (shape != null) {
                         return shape;
                     }
@@ -37,36 +51,15 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
         return null;
     }
 
-    private static PortalShape findAround(Location ignition, Material frame, PortalAxis axis,
-                                          int width, int height) {
-        // Огниво используется внутри рамки. Перебираем все возможные положения
-        // нижнего левого угла так же, чтобы найденный блок обязательно был внутри портала.
-        for (int horizontal = 1; horizontal <= width - 2; horizontal++) {
-            for (int vertical = 1; vertical <= height - 2; vertical++) {
-                Location origin = ignition.clone();
-                if (axis == PortalAxis.X) {
-                    origin.add(-horizontal, -vertical, 0);
-                } else {
-                    origin.add(0, -vertical, -horizontal);
-                }
+    private static PortalShape createIfMatches(Location origin, Location ignition,
+                                                Material frame, PortalAxis axis) {
+        List<Location> inside = new ArrayList<>(INNER_WIDTH * INNER_HEIGHT);
 
-                PortalShape shape = createIfMatches(origin, ignition, frame, axis, width, height);
-                if (shape != null) {
-                    return shape;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static PortalShape createIfMatches(Location origin, Location ignition, Material frame,
-                                                PortalAxis axis, int width, int height) {
-        List<Location> inside = new ArrayList<>((width - 2) * (height - 2));
-
-        for (int w = 0; w < width; w++) {
-            for (int h = 0; h < height; h++) {
-                Location location = at(origin, axis, w, h);
-                boolean border = w == 0 || w == width - 1 || h == 0 || h == height - 1;
+        for (int horizontal = 0; horizontal < OUTER_WIDTH; horizontal++) {
+            for (int vertical = 0; vertical < OUTER_HEIGHT; vertical++) {
+                Location location = at(origin, axis, horizontal, vertical);
+                boolean border = horizontal == 0 || horizontal == OUTER_WIDTH - 1
+                        || vertical == 0 || vertical == OUTER_HEIGHT - 1;
                 Material type = location.getBlock().getType();
 
                 if (border) {
@@ -74,8 +67,9 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
                         return null;
                     }
                 } else {
-                    // Внутренность должна быть свободной, как у обычного портала.
-                    if (type != Material.AIR && type != Material.FIRE && type != Material.NETHER_PORTAL) {
+                    if (type != Material.AIR
+                            && type != Material.FIRE
+                            && type != Material.NETHER_PORTAL) {
                         return null;
                     }
                     inside.add(location);
@@ -83,18 +77,12 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
             }
         }
 
-        boolean ignitionInside = false;
         for (Location location : inside) {
             if (sameBlock(location, ignition)) {
-                ignitionInside = true;
-                break;
+                return new PortalShape(frame, origin, axis, inside);
             }
         }
-        if (!ignitionInside) {
-            return null;
-        }
-
-        return new PortalShape(frame, origin, axis, width, height, inside);
+        return null;
     }
 
     private static Location at(Location origin, PortalAxis axis, int horizontal, int vertical) {
