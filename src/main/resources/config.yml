@@ -1,17 +1,35 @@
-# DiamondPortals configuration
+# Основные настройки DiamondPortals.
+# Команды и технические идентификаторы материалов Minecraft оставлены на английском,
+# потому что это внутренние значения API и изменение их на русский нарушит работу плагина.
+
 portal:
-  # First implementation: diamond block portals.
+  # Включить или отключить работу кастомных порталов.
   enabled: true
+
+  # Материал рамки первой версии плагина.
   frame-material: DIAMOND_BLOCK
+
+  # Префикс имени автоматически создаваемого измерения.
   world-prefix: diamondportal_
+
+  # Максимальный размер рамки портала.
   max-size: 23
+
+  # Задержка телепортации после активации портала в секундах.
   teleport-delay-seconds: 0
 
-  # The standard Nether-style ignition item.
+  # Предмет активации. По умолчанию обычное огниво, как у портала в Ад.
   ignition-item: FLINT_AND_STEEL
 
 world:
+  # Минимальная высота заполнения мира.
   min-height: 0
+
+  # Максимальная высота, используемая генератором.
   max-height: 128
+
+  # Базовая высота поверхности.
   surface-height: 64
+
+  # Режим выбора зерна генерации мира.
   seed-mode: RANDOM
