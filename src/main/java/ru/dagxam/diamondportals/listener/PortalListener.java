@@ -39,9 +39,6 @@ public final class PortalListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onIgnite(BlockIgniteEvent event) {
-        if (!(event.getIgniter() instanceof Player player)) {
-            return;
-        }
         if (!plugin.getConfig().getBoolean("portal.enabled", true)) {
             return;
         }
@@ -49,12 +46,18 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        Material frame = findFrameMaterial(event.getBlock());
+        Block ignitedBlock = event.getBlock();
+        Player player = findIgnitingPlayer(ignitedBlock);
+        if (player == null) {
+            return;
+        }
+
+        Material frame = findFrameMaterial(ignitedBlock);
         if (frame == null) {
             return;
         }
 
-        PortalShape shape = PortalShape.find(event.getBlock(), frame,
+        PortalShape shape = PortalShape.find(ignitedBlock, frame,
                 plugin.getConfig().getInt("portal.max-size", 23));
         if (shape == null) {
             return;
@@ -62,7 +65,28 @@ public final class PortalListener implements Listener {
 
         event.setCancelled(true);
         activate(shape);
-        player.sendMessage("§bDiamondPortals: §fПортал из блока §e" + russianName(frame) + " §fуспешно активирован.");
+        player.sendMessage("§bDiamondPortals: §fПортал из блока §e" + russianName(frame)
+                + " §fуспешно активирован.");
+    }
+
+    private Player findIgnitingPlayer(Block ignitedBlock) {
+        double maxDistanceSquared = 36.0;
+        Player nearest = null;
+        double nearestDistanceSquared = Double.MAX_VALUE;
+
+        for (Player player : ignitedBlock.getWorld().getPlayers()) {
+            if (player.getInventory().getItemInMainHand().getType() != Material.FLINT_AND_STEEL
+                    && player.getInventory().getItemInOffHand().getType() != Material.FLINT_AND_STEEL) {
+                continue;
+            }
+
+            double distanceSquared = player.getLocation().distanceSquared(ignitedBlock.getLocation());
+            if (distanceSquared <= maxDistanceSquared && distanceSquared < nearestDistanceSquared) {
+                nearest = player;
+                nearestDistanceSquared = distanceSquared;
+            }
+        }
+        return nearest;
     }
 
     private Material findFrameMaterial(Block ignitionBlock) {
@@ -122,10 +146,7 @@ public final class PortalListener implements Listener {
         Block center = location.getBlock();
         for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
             Material material = Material.matchMaterial(value);
-            if (material == null) {
-                continue;
-            }
-            if (hasFrameNearby(center, material)) {
+            if (material != null && hasFrameNearby(center, material)) {
                 return material;
             }
         }
