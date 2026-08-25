@@ -1,5 +1,6 @@
 package ru.dagxam.diamondportals.portal;
 
+import org.bukkit.BlockChangeDelegate;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
@@ -7,7 +8,7 @@ import org.bukkit.block.Block;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Проверенная прямоугольная рамка портала, похожая на портал в Ад. */
+/** Проверенная прямоугольная рамка портала, полностью повторяющая форму стандартного портала в Ад. */
 public record PortalShape(Material frame, Location origin, PortalAxis axis, int width, int height,
                           List<Location> inside) {
 
@@ -17,10 +18,18 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
     }
 
     public static PortalShape find(Block ignitedBlock, Material frame, int maxSize) {
+        if (ignitedBlock == null || frame == null) {
+            return null;
+        }
+
         Location base = ignitedBlock.getLocation();
+        int maximum = Math.max(4, maxSize);
+
+        // У стандартного портала минимальная внешняя рамка 4x5,
+        // а внутреннее пространство — минимум 2x3.
         for (PortalAxis axis : PortalAxis.values()) {
-            for (int width = 2; width <= maxSize - 2; width++) {
-                for (int height = 3; height <= maxSize - 2; height++) {
+            for (int width = 4; width <= maximum; width++) {
+                for (int height = 5; height <= maximum; height++) {
                     PortalShape result = tryExact(base, frame, axis, width, height);
                     if (result != null) {
                         return result;
@@ -31,11 +40,11 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
         return null;
     }
 
-    private static PortalShape tryExact(Location base, Material frame, PortalAxis axis, int width, int height) {
-        // Считаем поджигаемый блок возможной внутренней частью портала
-        // и перебираем возможные положения нижнего левого угла рамки.
-        for (int offset = -width; offset <= 0; offset++) {
-            for (int oy = -height; oy <= 0; oy++) {
+    private static PortalShape tryExact(Location base, Material frame, PortalAxis axis,
+                                        int width, int height) {
+        // Ищем нижний левый угол вокруг поджигаемого блока.
+        for (int offset = -(width - 1); offset <= 0; offset++) {
+            for (int oy = -(height - 1); oy <= 0; oy++) {
                 Location origin = base.clone();
                 if (axis == PortalAxis.Z) {
                     origin.add(offset, oy, 0);
@@ -58,14 +67,16 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
                         inside.add(location);
                     }
                 }
+
                 return new PortalShape(frame, origin, axis, width, height, inside);
             }
         }
         return null;
     }
 
-    private static boolean matches(Location origin, Material frame, PortalAxis axis, int width, int height) {
-        // Минимальная внешняя рамка 4x5, как у стандартного портала в Ад.
+    private static boolean matches(Location origin, Material frame, PortalAxis axis,
+                                   int width, int height) {
+        // Нижняя и верхняя перекладины.
         for (int w = 0; w < width; w++) {
             if (!isFrame(origin, frame, axis, w, 0)
                     || !isFrame(origin, frame, axis, w, height - 1)) {
@@ -73,6 +84,7 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
             }
         }
 
+        // Левая и правая стойки.
         for (int h = 0; h < height; h++) {
             if (!isFrame(origin, frame, axis, 0, h)
                     || !isFrame(origin, frame, axis, width - 1, h)) {
@@ -82,7 +94,8 @@ public record PortalShape(Material frame, Location origin, PortalAxis axis, int 
         return true;
     }
 
-    private static boolean isFrame(Location origin, Material frame, PortalAxis axis, int w, int h) {
+    private static boolean isFrame(Location origin, Material frame, PortalAxis axis,
+                                    int w, int h) {
         Location location = origin.clone().add(
                 axis == PortalAxis.Z ? w : 0,
                 h,
