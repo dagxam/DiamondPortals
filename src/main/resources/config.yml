@@ -30,7 +30,7 @@ portal:
     - LAPIS_BLOCK
     - REDSTONE_BLOCK
     - AMETHYST_BLOCK
-    - COAL_BLOCK
+    - COAL_BLOCK # портал в угольное измерение
     - NETHERITE_BLOCK
     - QUARTZ_BLOCK
 
