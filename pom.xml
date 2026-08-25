@@ -16,7 +16,7 @@
     </properties>
 
     <repositories>
-        <!-- Bukkit API распространяется через репозиторий SpigotMC. -->
+        <!-- Spigot API доступен через официальный репозиторий SpigotMC. -->
         <repository>
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
@@ -24,9 +24,12 @@
     </repositories>
 
     <dependencies>
+        <!-- Плагин использует стандартные Bukkit-интерфейсы,
+             но для Maven берём совместимый Spigot API, потому что
+             отдельный артефакт Bukkit 1.21.8 не опубликован в репозитории. -->
         <dependency>
-            <groupId>org.bukkit</groupId>
-            <artifactId>bukkit</artifactId>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
             <version>1.21.8-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
