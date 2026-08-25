@@ -4,7 +4,6 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.dagxam.diamondportals.listener.PortalListener;
-import ru.dagxam.diamondportals.world.BlockWorldGenerator;
 import ru.dagxam.diamondportals.world.DimensionManager;
 
 public final class DiamondPortalsPlugin extends JavaPlugin {
@@ -15,15 +14,14 @@ public final class DiamondPortalsPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        BlockWorldGenerator generator = new BlockWorldGenerator();
-        this.dimensionManager = new DimensionManager(this, generator);
+        this.dimensionManager = new DimensionManager(this);
 
         getServer().getPluginManager().registerEvents(
                 new PortalListener(this, dimensionManager), this
         );
 
         getLogger().info("DiamondPortals включён.");
-        getLogger().info("Алмазные порталы используют рамку из DIAMOND_BLOCK и активируются обычным огнивом.");
+        getLogger().info("Кастомные порталы имеют фиксированную рамку 4x5, внутреннюю область 2x3 и активируются обычным огнивом одним кликом.");
     }
 
     @Override
