@@ -2,16 +2,17 @@ name: DiamondPortals
 version: 0.1.0-SNAPSHOT
 main: ru.dagxam.diamondportals.DiamondPortalsPlugin
 api-version: '1.21'
-description: Universal portals that create block-themed dimensions.
+description: Плагин универсальных порталов в измерения из выбранных блоков.
 author: dagxam
 
 commands:
   diamondportals:
-    description: DiamondPortals administration command
+    description: Административная команда DiamondPortals
     aliases: [dportals]
     usage: /diamondportals reload
     permission: diamondportals.admin
 
 permissions:
   diamondportals.admin:
+    description: Разрешает использовать административные команды DiamondPortals.
     default: op
