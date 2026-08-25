@@ -1,0 +1,43 @@
+# Автоматическая сборка DiamondPortals
+# Сборка выполняется на Java 26 с использованием Maven и Bukkit API.
+
+name: Сборка DiamondPortals
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Сборка на Java 26
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Получение исходного кода
+        uses: actions/checkout@v4
+
+      - name: Установка Java 26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+
+      - name: Проверка версии Java
+        run: java -version
+
+      - name: Сборка плагина Maven
+        run: mvn -B clean package
+
+      - name: Сохранение готового JAR-файла
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiamondPortals-Java-26
+          path: target/*.jar
+          if-no-files-found: error
+          retention-days: 30
