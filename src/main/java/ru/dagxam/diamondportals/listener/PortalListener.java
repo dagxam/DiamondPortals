@@ -24,6 +24,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import ru.dagxam.diamondportals.portal.PortalShape;
 import ru.dagxam.diamondportals.world.DimensionManager;
 
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
@@ -32,15 +33,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Кастомные порталы.
+ * Обработчик кастомных порталов.
  *
- * Активация перехватывается ещё на PlayerInteractEvent, поэтому один клик
- * огнивом заполняет сразу всю внутреннюю область 2x3 и ваниль не успевает
- * оставить только один блок портала.
- *
- * Вход дополнительно перехватывается на PlayerMoveEvent. Это важно: некоторые
- * версии сервера сначала начинают ванильный переход в Незер, а PlayerPortalEvent
- * приходит уже слишком поздно. MoveEvent ловит вход в кастомный портал сразу.
+ * Оптимизация: активные внутренние блоки порталов кэшируются. Поэтому при
+ * обычном перемещении игрока не приходится каждый раз перебирать все материалы
+ * и повторно проверять всю рамку 4x5.
  */
 public final class PortalListener implements Listener {
 
@@ -49,16 +46,26 @@ public final class PortalListener implements Listener {
     private final Set<UUID> teleporting = new HashSet<>();
     private final Map<UUID, ReturnPoint> returnPoints = new HashMap<>();
     private final Set<String> createdReturnPortals = new HashSet<>();
+    private final Map<PortalBlockKey, PortalShape> portalCache = new HashMap<>();
+    private final Set<Material> allowedMaterials = EnumSet.noneOf(Material.class);
 
     public PortalListener(JavaPlugin plugin, DimensionManager dimensionManager) {
         this.plugin = plugin;
         this.dimensionManager = dimensionManager;
+        reloadSettings();
     }
 
-    /**
-     * Основной перехват огнива. Ищем рамку как в нажатом блоке, так и в блоке,
-     * куда Minecraft должен поставить огонь.
-     */
+    /** Обновляет кэш разрешённых материалов после /diamondportals reload. */
+    public void reloadSettings() {
+        allowedMaterials.clear();
+        for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
+            Material material = Material.matchMaterial(value);
+            if (material != null && material.isBlock()) {
+                allowedMaterials.add(material);
+            }
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
         if (!isEnabled()
@@ -75,7 +82,6 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        // Наш портал: полностью отменяем ванильное действие огнива.
         event.setCancelled(true);
         activate(shape);
         damageFlintAndSteel(event.getPlayer());
@@ -83,7 +89,7 @@ public final class PortalListener implements Listener {
                 + russianName(shape.frame()) + " §fактивирован.");
     }
 
-    /** Запасной перехват, если сервер вызвал только BlockIgniteEvent. */
+    /** Запасной перехват для серверов, где используется BlockIgniteEvent. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onIgnite(BlockIgniteEvent event) {
         if (!isEnabled() || event.getCause() != BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL) {
@@ -108,26 +114,19 @@ public final class PortalListener implements Listener {
         if (shape != null) {
             return shape;
         }
-        if (face != null) {
-            shape = findFrameNear(clicked.getRelative(face));
-            if (shape != null) {
-                return shape;
-            }
-        }
-        return null;
+        return face == null ? null : findFrameNear(clicked.getRelative(face));
     }
 
-    /** Ищет фиксированную 4x5 рамку вокруг блока в небольшом радиусе. */
+    /** Ищет фиксированную 4x5 рамку только во время активации или резервного поиска. */
     private PortalShape findFrameNear(Block center) {
-        if (center == null) {
+        if (center == null || allowedMaterials.isEmpty()) {
             return null;
         }
 
         for (int dx = -2; dx <= 2; dx++) {
             for (int dy = -3; dy <= 1; dy++) {
                 for (int dz = -2; dz <= 2; dz++) {
-                    Block candidate = center.getRelative(dx, dy, dz);
-                    PortalShape shape = findFrameAt(candidate);
+                    PortalShape shape = findFrameAt(center.getRelative(dx, dy, dz));
                     if (shape != null) {
                         return shape;
                     }
@@ -138,11 +137,7 @@ public final class PortalListener implements Listener {
     }
 
     private PortalShape findFrameAt(Block block) {
-        for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
-            Material material = Material.matchMaterial(value);
-            if (material == null || !material.isBlock()) {
-                continue;
-            }
+        for (Material material : allowedMaterials) {
             PortalShape shape = PortalShape.find(block, material);
             if (shape != null) {
                 return shape;
@@ -156,6 +151,7 @@ public final class PortalListener implements Listener {
         for (Location location : shape.inside()) {
             setPortalBlock(location.getBlock(), axis);
         }
+        cachePortal(shape);
     }
 
     private void setPortalBlock(Block block, Axis axis) {
@@ -164,12 +160,19 @@ public final class PortalListener implements Listener {
         block.setBlockData(data, false);
     }
 
+    private void cachePortal(PortalShape shape) {
+        for (Location location : shape.inside()) {
+            portalCache.put(PortalBlockKey.of(location), shape);
+        }
+    }
+
     private void damageFlintAndSteel(Player player) {
         if (player.getGameMode().name().equals("CREATIVE")) {
             return;
         }
         var item = player.getInventory().getItemInMainHand();
-        if (item.getType() != Material.FLINT_AND_STEEL || !(item.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable)) {
+        if (item.getType() != Material.FLINT_AND_STEEL
+                || !(item.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable damageable)) {
             return;
         }
         int damage = damageable.getDamage() + 1;
@@ -181,13 +184,9 @@ public final class PortalListener implements Listener {
         item.setItemMeta(damageable);
     }
 
-    /**
-     * Мгновенный перехват входа. Благодаря этому кастомный портал не ждёт,
-     * пока ванильный механизм подготовит телепорт в Незер.
-     */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        if (!isEnabled() || event.getTo() == null) {
+        if (!isEnabled() || event.getTo() == null || sameBlock(event.getFrom(), event.getTo())) {
             return;
         }
 
@@ -198,14 +197,11 @@ public final class PortalListener implements Listener {
         }
 
         PortalShape shape = findCustomPortalShape(event.getTo());
-        if (shape == null) {
-            return;
+        if (shape != null) {
+            beginPortalTeleport(player, event.getTo(), shape);
         }
-
-        beginPortalTeleport(player, event.getTo(), shape);
     }
 
-    /** Запасной перехват ванильного события портала. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onPlayerPortal(PlayerPortalEvent event) {
         if (!isEnabled()) {
@@ -217,13 +213,42 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        // Это гарантированно не ванильный обсидиановый портал.
         event.setCancelled(true);
-
         UUID uuid = event.getPlayer().getUniqueId();
         if (!teleporting.contains(uuid)) {
             beginPortalTeleport(event.getPlayer(), event.getFrom(), shape);
         }
+    }
+
+    private PortalShape findCustomPortalShape(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
+        }
+
+        Block base = location.getBlock();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 2; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    Block candidate = base.getRelative(dx, dy, dz);
+                    if (candidate.getType() != Material.NETHER_PORTAL) {
+                        continue;
+                    }
+
+                    PortalBlockKey key = PortalBlockKey.of(candidate);
+                    PortalShape cached = portalCache.get(key);
+                    if (cached != null) {
+                        return cached;
+                    }
+
+                    PortalShape shape = findFrameNear(candidate);
+                    if (shape != null) {
+                        cachePortal(shape);
+                        return shape;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     private void beginPortalTeleport(Player player, Location from, PortalShape shape) {
@@ -245,33 +270,6 @@ public final class PortalListener implements Listener {
 
         returnPoints.put(uuid, new ReturnPoint(safeReturnLocation(shape, from)));
         teleportToDimension(player, uuid, shape.frame());
-    }
-
-    /**
-     * Ищем портал вокруг ног игрока и на весь рост 3 блока. Это надёжнее,
-     * чем проверять только один блок, который зависит от позиции игрока.
-     */
-    private PortalShape findCustomPortalShape(Location location) {
-        if (location == null || location.getWorld() == null) {
-            return null;
-        }
-
-        Block base = location.getBlock();
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 2; dy++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    Block candidate = base.getRelative(dx, dy, dz);
-                    if (candidate.getType() != Material.NETHER_PORTAL) {
-                        continue;
-                    }
-                    PortalShape shape = findFrameNear(candidate);
-                    if (shape != null) {
-                        return shape;
-                    }
-                }
-            }
-        }
-        return null;
     }
 
     private Location safeReturnLocation(PortalShape shape, Location portalLocation) {
@@ -342,6 +340,11 @@ public final class PortalListener implements Listener {
             }
             createdReturnPortals.add(key);
         }
+
+        PortalShape shape = PortalShape.find(world.getBlockAt(x, baseY + 1, z), frameMaterial);
+        if (shape != null) {
+            cachePortal(shape);
+        }
         return base;
     }
 
@@ -392,7 +395,14 @@ public final class PortalListener implements Listener {
             return false;
         }
         String prefix = plugin.getConfig().getString("portal.world-prefix", "diamondportal_");
-        return world.getName().startsWith(prefix == null ? "diamondportal_" : prefix);
+        return world.getName().startsWith(prefix == null || prefix.isBlank() ? "diamondportal_" : prefix);
+    }
+
+    private static boolean sameBlock(Location first, Location second) {
+        return first.getWorld() == second.getWorld()
+                && first.getBlockX() == second.getBlockX()
+                && first.getBlockY() == second.getBlockY()
+                && first.getBlockZ() == second.getBlockZ();
     }
 
     @EventHandler
@@ -420,5 +430,19 @@ public final class PortalListener implements Listener {
     }
 
     private record ReturnPoint(Location location) {
+    }
+
+    private record PortalBlockKey(UUID worldId, int x, int y, int z) {
+        private static PortalBlockKey of(Location location) {
+            World world = location.getWorld();
+            if (world == null) {
+                throw new IllegalArgumentException("Portal location has no world");
+            }
+            return new PortalBlockKey(world.getUID(), location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        }
+
+        private static PortalBlockKey of(Block block) {
+            return new PortalBlockKey(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+        }
     }
 }
