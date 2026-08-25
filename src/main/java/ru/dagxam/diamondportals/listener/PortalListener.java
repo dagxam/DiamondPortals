@@ -1,6 +1,5 @@
 package ru.dagxam.diamondportals.listener;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -56,19 +55,19 @@ public final class PortalListener implements Listener {
         activate(shape);
         event.getBlock().setType(Material.NETHER_PORTAL);
 
-        // Fill every interior block with a portal block, reproducing the
-        // familiar Nether portal visual while keeping our custom destination.
+        // Заполняем всё внутреннее пространство блоками портала,
+        // сохраняя привычный внешний вид стандартного портала в Ад.
         for (Location location : shape.inside()) {
             location.getBlock().setType(Material.NETHER_PORTAL);
         }
 
-        player.sendMessage("§bDiamondPortals: §fportal activated.");
+        player.sendMessage("§bDiamondPortals: §fПортал успешно активирован.");
         teleportAfterActivation(player, shape);
     }
 
     private void activate(PortalShape shape) {
-        // The BlockIgniteEvent only gives us the ignited block. The rest of the
-        // interior is populated explicitly from the validated shape.
+        // Событие BlockIgniteEvent передаёт только блок, который был подожжён.
+        // Остальная внутренняя область заполняется после проверки всей рамки.
         for (Location location : shape.inside()) {
             location.getBlock().setType(Material.NETHER_PORTAL);
         }
@@ -79,7 +78,7 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        long delayTicks = Math.max(0L,\ plugin.getConfig().getLong("portal.teleport-delay-seconds", 0L) * 20L);
+        long delayTicks = Math.max(0L, plugin.getConfig().getLong("portal.teleport-delay-seconds", 0L) * 20L);
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -91,7 +90,7 @@ public final class PortalListener implements Listener {
 
                     Location targetLocation = target.getSpawnLocation().add(0.5, 0, 0.5);
                     player.teleport(targetLocation);
-                    player.sendMessage("§bDiamondPortals: §fWelcome to " + target.getName());
+                    player.sendMessage("§bDiamondPortals: §fВы прибыли в измерение §e" + target.getName());
                 } finally {
                     teleporting.remove(player.getUniqueId());
                 }
@@ -101,9 +100,9 @@ public final class PortalListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent event) {
-        // We handle custom portal travel ourselves. Cancelling the vanilla
-        // portal event prevents Minecraft from trying to route this portal to
-        // the Nether automatically.
+        // Кастомные порталы обрабатываются самим плагином.
+        // Отменяем стандартную обработку Minecraft, чтобы игрок не был
+        // автоматически отправлен в обычный Нижний мир.
         if (event.getFrom().getWorld() != null
                 && event.getFrom().getWorld().getName().startsWith(
                 plugin.getConfig().getString("portal.world-prefix", "diamondportal_"))) {
