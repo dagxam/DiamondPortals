@@ -14,6 +14,8 @@ import java.util.Random;
 public final class BlockWorldGenerator extends ChunkGenerator {
 
     private static final int DEFAULT_SURFACE_Y = 64;
+    private static final double RETURN_PORTAL_X = 4.0;
+    private static final double RETURN_PORTAL_RADIUS_SQUARED = 24.0 * 24.0;
 
     private Material material = Material.DIAMOND_BLOCK;
     private int surfaceY = DEFAULT_SURFACE_Y;
@@ -65,25 +67,23 @@ public final class BlockWorldGenerator extends ChunkGenerator {
         long seed = worldInfo.getSeed();
 
         for (int localX = 0; localX < 16; localX++) {
+            int worldX = chunkX * 16 + localX;
+            double deltaX = worldX - RETURN_PORTAL_X;
+
             for (int localZ = 0; localZ < 16; localZ++) {
-                int worldX = chunkX * 16 + localX;
                 int worldZ = chunkZ * 16 + localZ;
 
-                // Медленный шум задаёт крупные холмы, быстрый добавляет небольшие детали.
                 double broad = valueNoise(seed + 0x1A2B3C4DL, worldX / 120.0, worldZ / 120.0);
                 double hills = valueNoise(seed + 0x5E6F7788L, worldX / 60.0, worldZ / 60.0);
                 double detail = valueNoise(seed + 0x0F123ABCL, worldX / 28.0, worldZ / 28.0);
 
-                // Каждый шум находится в диапазоне примерно [-1; 1].
-                // Нормализуем сумму, иначе высота уходила в огромные значения
-                // и мир превращался в стену из вертикальных столбов.
-                double normalized = (broad * 0.60 + hills * 0.30 + detail * 0.10);
+                double normalized = broad * 0.60 + hills * 0.30 + detail * 0.10;
                 int height = surfaceY + (int) Math.round(normalized * 12.0);
 
-                // Ровная площадка возле обратного портала.
-                double distance = Math.hypot(worldX - 4.0, worldZ);
-                if (distance < 24.0) {
-                    double blend = distance / 24.0;
+                // Ровная площадка возле обратного портала без дорогого sqrt/hypot.
+                double distanceSquared = deltaX * deltaX + (double) worldZ * worldZ;
+                if (distanceSquared < RETURN_PORTAL_RADIUS_SQUARED) {
+                    double blend = Math.sqrt(distanceSquared) / 24.0;
                     height = (int) Math.round(surfaceY * (1.0 - blend) + height * blend);
                 }
 
