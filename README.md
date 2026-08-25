@@ -1,31 +1,33 @@
 # DiamondPortals
 
-DiamondPortals is a Paper plugin prototype for block-themed dimensions.
+DiamondPortals — плагин Paper для создания порталов в отдельные измерения, состоящие из выбранного блока.
 
-## Current prototype
+## Текущая версия прототипа
 
-- Paper 1.21.x API
-- Java 21
-- A Nether-style rectangular frame can be built from `DIAMOND_BLOCK`.
-- The frame is activated with flint and steel.
-- The plugin replaces the frame interior with Nether portal blocks.
-- A dedicated world is created on first use: `diamondportal_diamond_block`.
-- The generated landscape uses only `DIAMOND_BLOCK` as its solid terrain material.
-- Terrain has a non-flat height profile instead of being a superflat world.
+- Поддержка Paper 1.21.x.
+- Java 21.
+- Рамка портала строится в стиле стандартного портала в Ад из `DIAMOND_BLOCK`.
+- Портал активируется обычным огнивом.
+- Внутреннее пространство рамки заполняется визуальным эффектом портала.
+- При первом использовании автоматически создаётся отдельный мир: `diamondportal_diamond_block`.
+- Весь твёрдый ландшафт этого измерения генерируется из `DIAMOND_BLOCK`.
+- Мир имеет неровный рельеф, а не обычную плоскую генерацию.
 
-## Planned next features
+## Планируемые возможности
 
-- Automatic return portals.
-- Persistent portal-to-portal linking.
-- Per-material portal types instead of only `DIAMOND_BLOCK`.
-- Better terrain noise and caves while retaining one solid material.
-- Safe arrival-location selection.
-- Permissions and configurable material whitelist.
+- Автоматическое создание обратных порталов.
+- Сохранение связи между входным и выходным порталами.
+- Поддержка нескольких материалов рамки.
+- Принцип: материал рамки портала = материал всего ландшафта измерения.
+- Улучшенная генерация гор, равнин и пещер с сохранением одного основного материала.
+- Поиск безопасной точки появления игрока.
+- Права доступа и настраиваемый список разрешённых материалов.
+- Русские технические сообщения, описания и комментарии в конфигурации.
 
-## Build
+## Сборка
 
 ```bash
 mvn clean package
 ```
 
-The resulting JAR will be in `target/`.
+После успешной сборки готовый JAR-файл будет находиться в папке `target/`.
