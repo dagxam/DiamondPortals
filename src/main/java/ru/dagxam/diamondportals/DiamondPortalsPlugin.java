@@ -9,19 +9,20 @@ import ru.dagxam.diamondportals.world.DimensionManager;
 public final class DiamondPortalsPlugin extends JavaPlugin {
 
     private DimensionManager dimensionManager;
+    private PortalListener portalListener;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
         this.dimensionManager = new DimensionManager(this);
+        this.portalListener = new PortalListener(this, dimensionManager);
 
-        getServer().getPluginManager().registerEvents(
-                new PortalListener(this, dimensionManager), this
-        );
+        getServer().getPluginManager().registerEvents(portalListener, this);
 
         getLogger().info("DiamondPortals включён.");
         getLogger().info("Кастомные порталы имеют фиксированную рамку 4x5, внутреннюю область 2x3 и активируются обычным огнивом одним кликом.");
+        getLogger().info("Включён кэш активных порталов и измерений для уменьшения нагрузки на сервер.");
     }
 
     @Override
@@ -46,7 +47,9 @@ public final class DiamondPortalsPlugin extends JavaPlugin {
 
         if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
             reloadConfig();
-            sender.sendMessage("§aНастройки DiamondPortals успешно перезагружены.");
+            dimensionManager.reloadSettings();
+            portalListener.reloadSettings();
+            sender.sendMessage("§aНастройки и кэши DiamondPortals успешно перезагружены.");
             return true;
         }
 
