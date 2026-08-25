@@ -1,9 +1,12 @@
 package ru.dagxam.diamondportals.listener;
 
+import org.bukkit.Axis;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Orientable;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -47,13 +50,9 @@ public final class PortalListener implements Listener {
         }
 
         Block ignitedBlock = event.getBlock();
-        Player player = findIgnitingPlayer(ignitedBlock);
-        if (player == null) {
-            return;
-        }
-
         Material frame = findFrameMaterial(ignitedBlock);
         if (frame == null) {
+            // Это не портал DiamondPortals — ванильная механика продолжает работать.
             return;
         }
 
@@ -63,42 +62,27 @@ public final class PortalListener implements Listener {
             return;
         }
 
+        // Останавливаем только ванильное появление одного блока портала.
+        // Сразу после этого заполняем всю внутреннюю область, как обычный портал Minecraft.
         event.setCancelled(true);
         activate(shape);
-        player.sendMessage("§bDiamondPortals: §fПортал из блока §e" + russianName(frame)
-                + " §fуспешно активирован.");
-    }
 
-    private Player findIgnitingPlayer(Block ignitedBlock) {
-        double maxDistanceSquared = 36.0;
-        Player nearest = null;
-        double nearestDistanceSquared = Double.MAX_VALUE;
-
-        for (Player player : ignitedBlock.getWorld().getPlayers()) {
-            if (player.getInventory().getItemInMainHand().getType() != Material.FLINT_AND_STEEL
-                    && player.getInventory().getItemInOffHand().getType() != Material.FLINT_AND_STEEL) {
-                continue;
-            }
-
-            double distanceSquared = player.getLocation().distanceSquared(ignitedBlock.getLocation());
-            if (distanceSquared <= maxDistanceSquared && distanceSquared < nearestDistanceSquared) {
-                nearest = player;
-                nearestDistanceSquared = distanceSquared;
-            }
+        Player player = event.getPlayer();
+        if (player != null) {
+            player.sendMessage("§bDiamondPortals: §fПортал из блока §e" + russianName(frame)
+                    + " §fуспешно активирован.");
         }
-        return nearest;
     }
 
     private Material findFrameMaterial(Block ignitionBlock) {
+        int maxSize = plugin.getConfig().getInt("portal.max-size", 23);
         for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
             Material material = Material.matchMaterial(value);
             if (material == null || !material.isBlock()) {
                 plugin.getLogger().warning("Неизвестный материал в настройках порталов: " + value);
                 continue;
             }
-            PortalShape shape = PortalShape.find(ignitionBlock, material,
-                    plugin.getConfig().getInt("portal.max-size", 23));
-            if (shape != null) {
+            if (PortalShape.find(ignitionBlock, material, maxSize) != null) {
                 return material;
             }
         }
@@ -106,9 +90,16 @@ public final class PortalListener implements Listener {
     }
 
     private void activate(PortalShape shape) {
+        Axis axis = shape.axis() == PortalShape.PortalAxis.X ? Axis.X : Axis.Z;
         for (Location location : shape.inside()) {
-            location.getBlock().setType(Material.NETHER_PORTAL);
+            setPortalBlock(location.getBlock(), axis);
         }
+    }
+
+    private void setPortalBlock(Block block, Axis axis) {
+        Orientable portalData = (Orientable) Bukkit.createBlockData(Material.NETHER_PORTAL);
+        portalData.setAxis(axis);
+        block.setBlockData(portalData, false);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -119,7 +110,12 @@ public final class PortalListener implements Listener {
 
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (teleporting.contains(uuid) || !isInsideCustomPortal(event.getTo())) {
+        if (teleporting.contains(uuid)) {
+            return;
+        }
+
+        PortalShape shape = findCustomPortalShape(event.getTo());
+        if (shape == null) {
             return;
         }
 
@@ -133,37 +129,35 @@ public final class PortalListener implements Listener {
             return;
         }
 
-        Material frame = findFrameMaterialNear(event.getTo());
-        if (frame == null) {
-            return;
-        }
-
         returnPoints.put(uuid, new ReturnPoint(player.getLocation().clone()));
-        teleportToDimension(player, frame);
+        teleportToDimension(player, shape.frame());
     }
 
-    private Material findFrameMaterialNear(Location location) {
-        Block center = location.getBlock();
-        for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
-            Material material = Material.matchMaterial(value);
-            if (material != null && hasFrameNearby(center, material)) {
-                return material;
-            }
+    private PortalShape findCustomPortalShape(Location location) {
+        if (location == null || location.getWorld() == null) {
+            return null;
         }
-        return null;
-    }
 
-    private boolean hasFrameNearby(Block center, Material material) {
-        for (int dx = -1; dx <= 1; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                for (int dz = -1; dz <= 1; dz++) {
-                    if (center.getRelative(dx, dy, dz).getType() == material) {
-                        return true;
-                    }
+        int maxSize = plugin.getConfig().getInt("portal.max-size", 23);
+        for (int dy = -1; dy <= 1; dy++) {
+            Block candidate = location.getBlock().getRelative(0, dy, 0);
+            if (candidate.getType() != Material.NETHER_PORTAL) {
+                continue;
+            }
+
+            for (String value : plugin.getConfig().getStringList("portal.allowed-materials")) {
+                Material material = Material.matchMaterial(value);
+                if (material == null || !material.isBlock()) {
+                    continue;
+                }
+
+                PortalShape shape = PortalShape.find(candidate, material, maxSize);
+                if (shape != null) {
+                    return shape;
                 }
             }
         }
-        return false;
+        return null;
     }
 
     private void teleportToDimension(Player player, Material frameMaterial) {
@@ -217,7 +211,11 @@ public final class PortalListener implements Listener {
                 for (int dy = 0; dy <= 4; dy++) {
                     Block block = world.getBlockAt(x + dx, baseY + dy, z);
                     boolean border = dx == -1 || dx == 2 || dy == 0 || dy == 4;
-                    block.setType(border ? frameMaterial : Material.NETHER_PORTAL);
+                    if (border) {
+                        block.setType(frameMaterial, false);
+                    } else {
+                        setPortalBlock(block, Axis.X);
+                    }
                 }
             }
             createdReturnPortals.add(key);
@@ -268,11 +266,6 @@ public final class PortalListener implements Listener {
                 || from.getBlockZ() != to.getBlockZ();
     }
 
-    private boolean isInsideCustomPortal(Location location) {
-        return location.getBlock().getType() == Material.NETHER_PORTAL
-                || location.clone().add(0, 1, 0).getBlock().getType() == Material.NETHER_PORTAL;
-    }
-
     private boolean isCustomDimension(World world) {
         if (world == null) {
             return false;
@@ -283,7 +276,11 @@ public final class PortalListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onPlayerPortal(PlayerPortalEvent event) {
-        event.setCancelled(true);
+        // Ванильные порталы не трогаем. Отменяем только переход через нашу рамку,
+        // потому что DiamondPortals сам выполняет телепортацию в собственное измерение.
+        if (findCustomPortalShape(event.getFrom()) != null) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler
