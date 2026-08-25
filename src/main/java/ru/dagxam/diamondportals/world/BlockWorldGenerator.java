@@ -7,9 +7,9 @@ import org.bukkit.generator.WorldInfo;
 import java.util.Random;
 
 /**
- * Генератор измерений из одного материала. Рельеф строится плавным
- * многослойным шумом, поэтому поверхность выглядит как обычный ландшафт,
- * а не как случайные вертикальные столбы.
+ * Генератор однотипного измерения с плавным рельефом.
+ * Высота специально ограничена небольшими холмами, чтобы не появлялись
+ * бесконечные случайные стены и столбы.
  */
 public final class BlockWorldGenerator extends ChunkGenerator {
 
@@ -69,19 +69,21 @@ public final class BlockWorldGenerator extends ChunkGenerator {
                 int worldX = chunkX * 16 + localX;
                 int worldZ = chunkZ * 16 + localZ;
 
-                double broad = valueNoise(seed + 0x1A2B3C4DL, worldX / 96.0, worldZ / 96.0);
-                double hills = valueNoise(seed + 0x5E6F7788L, worldX / 48.0, worldZ / 48.0);
-                double detail = valueNoise(seed + 0x0F123ABCL, worldX / 20.0, worldZ / 20.0);
+                // Медленный шум задаёт крупные холмы, быстрый добавляет небольшие детали.
+                double broad = valueNoise(seed + 0x1A2B3C4DL, worldX / 120.0, worldZ / 120.0);
+                double hills = valueNoise(seed + 0x5E6F7788L, worldX / 60.0, worldZ / 60.0);
+                double detail = valueNoise(seed + 0x0F123ABCL, worldX / 28.0, worldZ / 28.0);
 
-                double terrain = broad * 14.0 + hills * 7.0 + detail * 2.0;
-                terrain = terrain * 0.5 + 0.5;
+                // Каждый шум находится в диапазоне примерно [-1; 1].
+                // Нормализуем сумму, иначе высота уходила в огромные значения
+                // и мир превращался в стену из вертикальных столбов.
+                double normalized = (broad * 0.60 + hills * 0.30 + detail * 0.10);
+                int height = surfaceY + (int) Math.round(normalized * 12.0);
 
-                int height = surfaceY + (int) Math.round((terrain - 0.5) * 32.0);
-
-                // Небольшая ровная площадка у точки появления и обратного портала.
-                double distance = Math.sqrt((worldX - 4.0) * (worldX - 4.0) + (double) worldZ * worldZ);
-                if (distance < 18.0) {
-                    double blend = distance / 18.0;
+                // Ровная площадка возле обратного портала.
+                double distance = Math.hypot(worldX - 4.0, worldZ);
+                if (distance < 24.0) {
+                    double blend = distance / 24.0;
                     height = (int) Math.round(surfaceY * (1.0 - blend) + height * blend);
                 }
 
